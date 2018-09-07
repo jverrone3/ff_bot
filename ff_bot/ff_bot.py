@@ -20,7 +20,7 @@ class GroupMeBot(object):
     def __repr__(self):
         return "GroupMeBot(%s)" % self.bot_id
 
-    def send_message(self, text, attachments):
+    def send_message(self, text, attachments = None):
         #Sends a message to the chatroom
         template = {
                 "bot_id": self.bot_id,
@@ -46,7 +46,7 @@ class SlackBot(object):
     def __repr__(self):
         return "Slack Webhook Url(%s)" % self.webhook_url
 
-    def send_message(self, text, attachments):
+    def send_message(self, text, attachments = None):
         #Sends a message to the chatroom
         template = {
                 "text": text,
