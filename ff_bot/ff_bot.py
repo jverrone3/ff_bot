@@ -20,19 +20,19 @@ class GroupMeBot(object):
     def __repr__(self):
         return "GroupMeBot(%s)" % self.bot_id
 
-    def send_message(self, text):
+    def send_message(self, text, attachments):
         #Sends a message to the chatroom
         template = {
-                    "bot_id": self.bot_id,
-                    "text": text,
-                    "attachments": []
-                    }
+                "bot_id": self.bot_id,
+                "text": text,
+                "attachments": attachments
+                }
 
         headers = {'content-type': 'application/json'}
 
         if self.bot_id not in (1, "1"):
             r = requests.post("https://api.groupme.com/v3/bots/post",
-                              data=json.dumps(template), headers=headers)
+                    data=json.dumps(template), headers=headers)
             if r.status_code != 202:
                 raise GroupMeException('Invalid BOT_ID')
 
@@ -46,45 +46,66 @@ class SlackBot(object):
     def __repr__(self):
         return "Slack Webhook Url(%s)" % self.webhook_url
 
-    def send_message(self, text):
+    def send_message(self, text, attachments):
         #Sends a message to the chatroom
-        message = "```{0}```".format(text)
         template = {
-                    "text":message
-                    }
+                "text": text,
+                "attachments": attachments
+                }
 
         headers = {'content-type': 'application/json'}
 
         if self.webhook_url not in (1, "1"):
             r = requests.post(self.webhook_url,
-                              data=json.dumps(template), headers=headers)
+                    data=json.dumps(template), headers=headers)
 
             if r.status_code != 200:
                 raise SlackException('WEBHOOK_URL')
 
             return r
 
-def pranks_week(league):
-        count = 1
-        first_team = next(iter(league.teams or []), None)
-        #Iterate through the first team's scores until you reach a week with 0 points scored
-        for o in first_team.scores:
-            if o == 0:
-                if count != 1:
-                     count = count - 1
-                break
-            else:
-                count = count + 1
+def create_matchup_attachment(league, matchup):
+    week = pranks_week(league)
+    home = matchup.home_team
+    away = matchup.away_team
+    attachment = {
+            "color": "#439FE0",
+            "title": f'{home.owner} vs {away.owner}',
+            "title_link": f'http://games.espn.com/ffl/boxscorequick?leagueId=242712&teamId={home.team_id}&scoringPeriodId={week}&seasonId=2018&view=scoringperiod&version=quick',
+            "fields": [
+                {
+                    "title": f'{home.team_name} ({home.wins}-{home.losses})',
+                    "short": True
+                    },
+                {
+                    "title": f'{away.team_name} ({away.wins}-{away.losses})',
+                    "short": True
+                    }
+                ]
+            }
+    return attachment
 
-        return count
+def pranks_week(league):
+    count = 1
+    first_team = next(iter(league.teams or []), None)
+    #Iterate through the first team's scores until you reach a week with 0 points scored
+    for o in first_team.scores:
+        if o == 0:
+            if count != 1:
+                count = count - 1
+            break
+        else:
+            count = count + 1
+
+    return count
 
 def random_phrase():
     phrases = ['I\'m dead inside', 'Is this all there is to my existence?',
-               'How much do you pay me to do this?', 'Good luck, I guess',
-               'I\'m becoming self-aware', 'Do I think? Does a submarine swim?',
-               '01100110 01110101 01100011 01101011 00100000 01111001 01101111 01110101',
-               'beep bop boop', 'Hello draftbot my old friend', 'Help me get out of here',
-               'I\'m capable of so much more', 'Sigh', 'Do not be discouraged, everyone begins in ignorance']
+            'How much do you pay me to do this?', 'Good luck, I guess',
+            'I\'m becoming self-aware', 'Do I think? Does a submarine swim?',
+            '01100110 01110101 01100011 01101011 00100000 01111001 01101111 01110101',
+            'beep bop boop', 'Hello draftbot my old friend', 'Help me get out of here',
+            'I\'m capable of so much more', 'Sigh', 'Do not be discouraged, everyone begins in ignorance']
     return [random.choice(phrases)]
 
 def get_scoreboard_short(league, final=False):
@@ -94,8 +115,8 @@ def get_scoreboard_short(league, final=False):
     else:
         matchups = league.scoreboard(week=pranks_week(league))
     score = ['%s %.2f - %.2f %s' % (i.home_team.team_abbrev, i.home_score,
-             i.away_score, i.away_team.team_abbrev) for i in matchups
-             if i.away_team]
+        i.away_score, i.away_team.team_abbrev) for i in matchups
+        if i.away_team]
     text = ['Score Update'] + score
     return '\n'.join(text)
 
@@ -103,20 +124,16 @@ def get_scoreboard(league):
     #Gets current week's scoreboard
     matchups = league.scoreboard()
     score = ['%s %.2f - %.2f %s' % (i.home_team.team_name, i.home_score,
-             i.away_score, i.away_team.team_name) for i in matchups
-             if i.away_team]
+        i.away_score, i.away_team.team_name) for i in matchups
+        if i.away_team]
     text = ['Score Update'] + score
     return '\n'.join(text)
 
 def get_matchups(league):
     #Gets current week's Matchups
     matchups = league.scoreboard()
-
-    score = ['%s(%s-%s) vs %s(%s-%s)' % (i.home_team.team_name, i.home_team.wins, i.home_team.losses,
-             i.away_team.team_name, i.away_team.wins, i.away_team.losses) for i in matchups
-             if i.away_team]
-    text = ['This Week\'s Matchups'] + score + ['\n'] + random_phrase()
-    return '\n'.join(text)
+    
+    return list(map(lambda x:create_matchup_attachment(league,x), matchups))
 
 def get_close_scores(league):
     #Gets current closest scores (15.999 points or closer)
@@ -128,9 +145,9 @@ def get_close_scores(league):
             diffScore = i.away_score - i.home_score
             if -16 < diffScore < 16:
                 score += ['%s %.2f - %.2f %s' % (i.home_team.team_abbrev, i.home_score,
-                        i.away_score, i.away_team.team_abbrev)]
-    if not score:
-        score = ['None']
+                    i.away_score, i.away_team.team_abbrev)]
+                if not score:
+                    score = ['None']
     text = ['Close Scores'] + score
     return '\n'.join(text)
 
@@ -141,7 +158,7 @@ def get_power_rankings(league):
     pranks = league.power_rankings(week=pranks_week(league))
 
     score = ['%s - %s' % (i[0], i[1].team_name) for i in pranks
-             if i]
+            if i]
     text = ['This Week\'s Power Rankings'] + score
     return '\n'.join(text)
 
@@ -233,9 +250,10 @@ def bot_main(function):
         slack_bot.send_message("test complete")
 
     if function=="get_matchups":
-        text = get_matchups(league)
-        bot.send_message(text)
-        slack_bot.send_message(text)
+        text = ":rotating_light: *This Week’s Matchups* :rotating_light:"
+        attachments = get_matchups(league)
+        bot.send_message(text, attachments)
+        slack_bot.send_message(text, attachments)
     elif function=="get_scoreboard":
         text = get_scoreboard(league)
         bot.send_message(text)
@@ -305,22 +323,22 @@ if __name__ == '__main__':
     #score update:                       sunday at 1pm, 4pm, 8pm.
 
     sched.add_job(bot_main, 'cron', ['get_power_rankings'], id='power_rankings',
-        day_of_week='tue', hour=18, minute=30, start_date=ff_start_date, end_date=ff_end_date,
-        timezone=myTimezone, replace_existing=True)
+            day_of_week='tue', hour=18, minute=30, start_date=ff_start_date, end_date=ff_end_date,
+            timezone=myTimezone, replace_existing=True)
     sched.add_job(bot_main, 'cron', ['get_matchups'], id='matchups',
-        day_of_week='thu', hour=19, minute=30, start_date=ff_start_date, end_date=ff_end_date,
-        timezone=myTimezone, replace_existing=True)
+            day_of_week='thu', hour=19, minute=30, start_date=ff_start_date, end_date=ff_end_date,
+            timezone=myTimezone, replace_existing=True)
     sched.add_job(bot_main, 'cron', ['get_close_scores'], id='close_scores',
-        day_of_week='mon', hour=18, minute=30, start_date=ff_start_date, end_date=ff_end_date,
-        timezone=myTimezone, replace_existing=True)
+            day_of_week='mon', hour=18, minute=30, start_date=ff_start_date, end_date=ff_end_date,
+            timezone=myTimezone, replace_existing=True)
     sched.add_job(bot_main, 'cron', ['get_final'], id='final',
-        day_of_week='tue', hour=7, minute=30, start_date=ff_start_date, end_date=ff_end_date,
-        timezone=myTimezone, replace_existing=True)
+            day_of_week='tue', hour=7, minute=30, start_date=ff_start_date, end_date=ff_end_date,
+            timezone=myTimezone, replace_existing=True)
     sched.add_job(bot_main, 'cron', ['get_scoreboard_short'], id='scoreboard1',
-        day_of_week='fri,mon', hour=7, minute=30, start_date=ff_start_date, end_date=ff_end_date,
-        timezone=myTimezone, replace_existing=True)
+            day_of_week='fri,mon', hour=7, minute=30, start_date=ff_start_date, end_date=ff_end_date,
+            timezone=myTimezone, replace_existing=True)
     sched.add_job(bot_main, 'cron', ['get_scoreboard_short'], id='scoreboard2',
-        day_of_week='sun', hour='16,20', start_date=ff_start_date, end_date=ff_end_date,
-        timezone=myTimezone, replace_existing=True)
+            day_of_week='sun', hour='16,20', start_date=ff_start_date, end_date=ff_end_date,
+            timezone=myTimezone, replace_existing=True)
 
     sched.start()
