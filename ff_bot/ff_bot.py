@@ -69,16 +69,57 @@ def create_matchup_attachment(league, matchup):
     home = matchup.home_team
     away = matchup.away_team
     attachment = {
-            "color": "#439FE0",
-            "title": f'{home.owner} vs {away.owner}',
+            "title": 'See Matchup',
             "title_link": f'http://games.espn.com/ffl/boxscorequick?leagueId=242712&teamId={home.team_id}&scoringPeriodId={week}&seasonId=2018&view=scoringperiod&version=quick',
             "fields": [
                 {
                     "title": f'{home.team_name} ({home.wins}-{home.losses})',
+                    "value": f'{home.owner}',
                     "short": True
                     },
                 {
                     "title": f'{away.team_name} ({away.wins}-{away.losses})',
+                    "value": f'{away.owner}',
+                    "short": True
+                    }
+                ]
+            }
+    return attachment
+
+def create_score_attachment(league, matchup):
+    week = pranks_week(league)
+    home = matchup.home_team
+    away = matchup.away_team
+    attachment = {
+            "fields": [
+                {
+                    "title": f'{matchup.home_score}',
+                    "value": f'{home.team_name}\n({home.owner})',
+                    "short": True
+                    },
+                {
+                    "title": f'{matchup.away_score}',
+                    "value": f'{away.team_name}\n({away.owner})',
+                    "short": True
+                    }
+                ]
+            }
+    return attachment
+
+def create_close_score_attachment(league, matchup):
+    week = pranks_week(league)
+    home = matchup.home_team
+    away = matchup.away_team
+    attachment = {
+            "fields": [
+                {
+                    "title": f'{matchup.home_score}',
+                    "value": f'{home.owner}',
+                    "short": True
+                    },
+                {
+                    "title": f'{matchup.away_score}',
+                    "value": f'{away.owner}',
                     "short": True
                     }
                 ]
@@ -108,48 +149,31 @@ def random_phrase():
             'I\'m capable of so much more', 'Sigh', 'Do not be discouraged, everyone begins in ignorance']
     return [random.choice(phrases)]
 
-def get_scoreboard_short(league, final=False):
-    #Gets current week's scoreboard
-    if not final:
-        matchups = league.scoreboard()
-    else:
-        matchups = league.scoreboard(week=pranks_week(league))
-    score = ['%s %.2f - %.2f %s' % (i.home_team.team_abbrev, i.home_score,
-        i.away_score, i.away_team.team_abbrev) for i in matchups
-        if i.away_team]
-    text = ['Score Update'] + score
-    return '\n'.join(text)
-
 def get_scoreboard(league):
     #Gets current week's scoreboard
     matchups = league.scoreboard()
-    score = ['%s %.2f - %.2f %s' % (i.home_team.team_name, i.home_score,
-        i.away_score, i.away_team.team_name) for i in matchups
-        if i.away_team]
-    text = ['Score Update'] + score
-    return '\n'.join(text)
+    return list(map(lambda x:create_score_attachment(league,x), matchups)) 
 
 def get_matchups(league):
     #Gets current week's Matchups
     matchups = league.scoreboard()
-    
     return list(map(lambda x:create_matchup_attachment(league,x), matchups))
 
 def get_close_scores(league):
     #Gets current closest scores (15.999 points or closer)
     matchups = league.scoreboard()
-    score = []
+    close_games = []
 
     for i in matchups:
         if i.away_team:
             diffScore = i.away_score - i.home_score
             if -16 < diffScore < 16:
-                score += ['%s %.2f - %.2f %s' % (i.home_team.team_abbrev, i.home_score,
-                    i.away_score, i.away_team.team_abbrev)]
-                if not score:
-                    score = ['None']
-    text = ['Close Scores'] + score
-    return '\n'.join(text)
+                close_games.append(i)
+
+    if not close_games:
+        return None
+    
+    return list(map(lambda x:create_close_score_attachment(league,x), close_games))
 
 def get_power_rankings(league):
     #Gets current week's power rankings
@@ -240,12 +264,9 @@ def bot_main(function):
     if test:
         print(get_matchups(league))
         print(get_scoreboard(league))
-        print(get_scoreboard_short(league))
         print(get_close_scores(league))
         print(get_power_rankings(league))
         print(get_trophies(league))
-        function="get_final"
-        #bot.send_message(get_trophies(league))
         bot.send_message("test complete")
         slack_bot.send_message("test complete")
 
@@ -255,17 +276,15 @@ def bot_main(function):
         bot.send_message(text, attachments)
         slack_bot.send_message(text, attachments)
     elif function=="get_scoreboard":
-        text = get_scoreboard(league)
-        bot.send_message(text)
-        slack_bot.send_message(text)
-    elif function=="get_scoreboard_short":
-        text = get_scoreboard_short(league)
-        bot.send_message(text)
-        slack_bot.send_message(text)
+        text = ":first_place_medal: *Score Update* :first_place_medal:"
+        attachments = get_scoreboard(league)
+        bot.send_message(text, attachments)
+        slack_bot.send_message(text, attachments)
     elif function=="get_close_scores":
-        text = get_close_scores(league)
-        bot.send_message(text)
-        slack_bot.send_message(text)
+        text = "*Close Games*" 
+        attachments = get_close_scores(league)
+        bot.send_message(text, attachments)
+        slack_bot.send_message(text, attachments)
     elif function=="get_power_rankings":
         text = get_power_rankings(league)
         bot.send_message(text)
@@ -275,13 +294,16 @@ def bot_main(function):
         bot.send_message(text)
         slack_bot.send_message(text)
     elif function=="get_final":
-        text = "Final " + get_scoreboard_short(league, True)
+        #Send final scores
+        text = ":first_place_medal: *Final Score Update* :first_place_medal:" 
+        attachments = get_scoreboard(league, True)
+        bot.send_message(text)
+        slack_bot.send_message(text)
+
+        #Send trophies
         text = text + "\n\n" + get_trophies(league)
-        if test:
-            print(text)
-        else:
-            bot.send_message(text)
-            slack_bot.send_message(text)
+        bot.send_message(text)
+        slack_bot.send_message(text)
     elif function=="init":
         try:
             text = os.environ["INIT_MSG"]
@@ -334,10 +356,10 @@ if __name__ == '__main__':
     sched.add_job(bot_main, 'cron', ['get_final'], id='final',
             day_of_week='tue', hour=7, minute=30, start_date=ff_start_date, end_date=ff_end_date,
             timezone=myTimezone, replace_existing=True)
-    sched.add_job(bot_main, 'cron', ['get_scoreboard_short'], id='scoreboard1',
+    sched.add_job(bot_main, 'cron', ['get_scoreboard'], id='scoreboard1',
             day_of_week='fri,mon', hour=7, minute=30, start_date=ff_start_date, end_date=ff_end_date,
             timezone=myTimezone, replace_existing=True)
-    sched.add_job(bot_main, 'cron', ['get_scoreboard_short'], id='scoreboard2',
+    sched.add_job(bot_main, 'cron', ['get_scoreboard'], id='scoreboard2',
             day_of_week='sun', hour='16,20', start_date=ff_start_date, end_date=ff_end_date,
             timezone=myTimezone, replace_existing=True)
 
